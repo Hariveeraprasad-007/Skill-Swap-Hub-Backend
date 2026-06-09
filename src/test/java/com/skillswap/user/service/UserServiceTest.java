@@ -126,4 +126,74 @@ class UserServiceTest {
         assertEquals(1, results.size());
         assertEquals(user.getEmail(), results.get(0).email());
     }
+
+    @Test
+    void getUserProfile_success() {
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(skillRepository.findByUserId(userId)).thenReturn(Collections.emptyList());
+        when(certificationRepository.findByUserId(userId)).thenReturn(Collections.emptyList());
+        when(experienceRepository.findByUserId(userId)).thenReturn(Collections.emptyList());
+
+        UserProfileResponse response = userService.getUserProfile(userId);
+
+        assertNotNull(response);
+        assertEquals(userId, response.id());
+        assertEquals(user.getEmail(), response.email());
+    }
+
+    @Test
+    void getUserProfile_notFound() {
+        UUID randomId = UUID.randomUUID();
+        when(userRepository.findById(randomId)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () -> userService.getUserProfile(randomId));
+    }
+
+    @Test
+    void updateProfile_notFound() {
+        UserProfileUpdateRequest request = new UserProfileUpdateRequest(
+                "First", "Last", "Bio", "pic.jpg",
+                "git", "link", "leet", "code"
+        );
+        when(userRepository.findByEmail("unknown@test.com")).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () ->
+                userService.updateProfile("unknown@test.com", request)
+        );
+    }
+
+    @Test
+    void updateProfile_partialUpdate() {
+        when(userRepository.findByEmail(user.getEmail())).thenReturn(Optional.of(user));
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(skillRepository.findByUserId(userId)).thenReturn(Collections.emptyList());
+        when(certificationRepository.findByUserId(userId)).thenReturn(Collections.emptyList());
+        when(experienceRepository.findByUserId(userId)).thenReturn(Collections.emptyList());
+
+        // Update only some fields; keep other fields null
+        UserProfileUpdateRequest request = new UserProfileUpdateRequest(
+                "NewFirstName", null, "New bio content", null,
+                null, "new-linkedin", null, null
+        );
+
+        UserProfileResponse response = userService.updateProfile(user.getEmail(), request);
+
+        assertNotNull(response);
+        assertEquals("NewFirstName", response.firstName()); // updated
+        assertEquals("Wonderland", response.lastName()); // not updated (retains old value)
+        assertEquals("New bio content", response.bio()); // updated
+        assertNull(response.profilePictureUrl()); // retains old (which was null)
+        assertNull(response.githubUrl()); // retains old (which was null)
+        assertEquals("new-linkedin", response.linkedinUrl()); // updated
+    }
+
+    @Test
+    void searchBySkill_emptyResults() {
+        when(userRepository.searchBySkill("Python", SkillDirection.LEARN)).thenReturn(Collections.emptyList());
+
+        List<UserProfileResponse> results = userService.searchBySkill("Python", SkillDirection.LEARN);
+
+        assertNotNull(results);
+        assertTrue(results.isEmpty());
+    }
 }

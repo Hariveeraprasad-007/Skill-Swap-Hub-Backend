@@ -51,4 +51,26 @@ class JwtServiceTest {
 
         assertFalse(jwtService.isTokenValid(token, userDetails));
     }
+
+    @Test
+    void generateToken_withExtraClaims_success() {
+        String email = "user@test.com";
+        java.util.Map<String, Object> extraClaims = java.util.Map.of("role", "ADMIN", "customId", 123);
+        String token = jwtService.generateToken(email, extraClaims);
+
+        assertNotNull(token);
+        String extractedEmail = jwtService.extractEmail(token);
+        assertEquals(email, extractedEmail);
+    }
+
+    @Test
+    void isTokenValid_fail_expired() {
+        ReflectionTestUtils.setField(jwtService, "accessTokenExpiration", -5000L); // expired
+        String email = "user@test.com";
+        String token = jwtService.generateToken(email);
+
+        UserDetails userDetails = new User(email, "password", Collections.emptyList());
+
+        assertThrows(Exception.class, () -> jwtService.isTokenValid(token, userDetails));
+    }
 }

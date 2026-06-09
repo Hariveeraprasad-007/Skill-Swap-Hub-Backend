@@ -246,4 +246,372 @@ class SessionServiceTest {
                 sessionService.bookSession(student.getEmail(), request)
         );
     }
+
+    @Test
+    void bookSession_fail_pastBooking() {
+        LocalDateTime pastStart = LocalDateTime.now().minusHours(1);
+        LocalDateTime pastEnd = pastStart.plusHours(1);
+        SessionBookRequest request = new SessionBookRequest(
+                teacherId, "Java", BillingType.FREE, null, null, pastStart, pastEnd
+        );
+
+        when(userRepository.findByEmail(student.getEmail())).thenReturn(Optional.of(student));
+        when(userRepository.findById(teacherId)).thenReturn(Optional.of(teacher));
+
+        assertThrows(IllegalArgumentException.class, () ->
+                sessionService.bookSession(student.getEmail(), request)
+        );
+    }
+
+    @Test
+    void bookSession_fail_studentConflict() {
+        SessionBookRequest request = new SessionBookRequest(
+                teacherId, "Java", BillingType.FREE, null, null, futureStart, futureEnd
+        );
+
+        when(userRepository.findByEmail(student.getEmail())).thenReturn(Optional.of(student));
+        when(userRepository.findById(teacherId)).thenReturn(Optional.of(teacher));
+
+        when(userSkillRepository.existsByUserIdAndSkillNameIgnoreCaseAndDirection(
+                teacherId, "Java", SkillDirection.TEACH)).thenReturn(true);
+        when(userSkillRepository.existsByUserIdAndSkillNameIgnoreCaseAndDirection(
+                studentId, "Java", SkillDirection.LEARN)).thenReturn(true);
+
+        Availability availability = new Availability();
+        availability.setStartTime(LocalTime.of(9, 0));
+        availability.setEndTime(LocalTime.of(17, 0));
+        when(availabilityRepository.findCoveringSlot(
+                eq(teacherId), anyInt(), any(LocalTime.class), any(LocalTime.class)))
+                .thenReturn(List.of(availability));
+
+        when(sessionRepository.findTeacherConflicts(eq(teacherId), any(LocalDateTime.class), any(LocalDateTime.class)))
+                .thenReturn(Collections.emptyList());
+
+        Session conflictingSession = new Session();
+        conflictingSession.setStartTime(futureStart);
+        conflictingSession.setEndTime(futureEnd);
+        when(sessionRepository.findStudentConflicts(eq(studentId), any(LocalDateTime.class), any(LocalDateTime.class)))
+                .thenReturn(List.of(conflictingSession));
+
+        assertThrows(ScheduleConflictException.class, () ->
+                sessionService.bookSession(student.getEmail(), request)
+        );
+    }
+
+    @Test
+    void acceptSession_success() {
+        UUID sessionId = UUID.randomUUID();
+        Session session = new Session();
+        session.setId(sessionId);
+        session.setTeacher(teacher);
+        session.setStudent(student);
+        session.setStatus(SessionStatus.PENDING);
+
+        when(sessionRepository.findById(sessionId)).thenReturn(Optional.of(session));
+        when(sessionRepository.save(any(Session.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        SessionResponse response = sessionService.acceptSession(teacher.getEmail(), sessionId);
+
+        assertNotNull(response);
+        assertEquals(SessionStatus.ACCEPTED, response.status());
+    }
+
+    @Test
+    void acceptSession_fail_sessionNotFound() {
+        UUID sessionId = UUID.randomUUID();
+        when(sessionRepository.findById(sessionId)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () ->
+                sessionService.acceptSession(teacher.getEmail(), sessionId)
+        );
+    }
+
+    @Test
+    void acceptSession_fail_wrongTeacher() {
+        UUID sessionId = UUID.randomUUID();
+        Session session = new Session();
+        session.setId(sessionId);
+        session.setTeacher(teacher);
+        session.setStudent(student);
+        session.setStatus(SessionStatus.PENDING);
+
+        when(sessionRepository.findById(sessionId)).thenReturn(Optional.of(session));
+
+        assertThrows(InvalidOperationException.class, () ->
+                sessionService.acceptSession("other@test.com", sessionId)
+        );
+    }
+
+    @Test
+    void acceptSession_fail_invalidStatus() {
+        UUID sessionId = UUID.randomUUID();
+        Session session = new Session();
+        session.setId(sessionId);
+        session.setTeacher(teacher);
+        session.setStudent(student);
+        session.setStatus(SessionStatus.ACCEPTED); // already accepted
+
+        when(sessionRepository.findById(sessionId)).thenReturn(Optional.of(session));
+
+        assertThrows(InvalidOperationException.class, () ->
+                sessionService.acceptSession(teacher.getEmail(), sessionId)
+        );
+    }
+
+    @Test
+    void rejectSession_success() {
+        UUID sessionId = UUID.randomUUID();
+        Session session = new Session();
+        session.setId(sessionId);
+        session.setTeacher(teacher);
+        session.setStudent(student);
+        session.setStatus(SessionStatus.PENDING);
+
+        when(sessionRepository.findById(sessionId)).thenReturn(Optional.of(session));
+        when(sessionRepository.save(any(Session.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        SessionResponse response = sessionService.rejectSession(teacher.getEmail(), sessionId);
+
+        assertNotNull(response);
+        assertEquals(SessionStatus.REJECTED, response.status());
+    }
+
+    @Test
+    void rejectSession_fail_sessionNotFound() {
+        UUID sessionId = UUID.randomUUID();
+        when(sessionRepository.findById(sessionId)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () ->
+                sessionService.rejectSession(teacher.getEmail(), sessionId)
+        );
+    }
+
+    @Test
+    void rejectSession_fail_wrongTeacher() {
+        UUID sessionId = UUID.randomUUID();
+        Session session = new Session();
+        session.setId(sessionId);
+        session.setTeacher(teacher);
+        session.setStudent(student);
+        session.setStatus(SessionStatus.PENDING);
+
+        when(sessionRepository.findById(sessionId)).thenReturn(Optional.of(session));
+
+        assertThrows(InvalidOperationException.class, () ->
+                sessionService.rejectSession("other@test.com", sessionId)
+        );
+    }
+
+    @Test
+    void rejectSession_fail_invalidStatus() {
+        UUID sessionId = UUID.randomUUID();
+        Session session = new Session();
+        session.setId(sessionId);
+        session.setTeacher(teacher);
+        session.setStudent(student);
+        session.setStatus(SessionStatus.REJECTED);
+
+        when(sessionRepository.findById(sessionId)).thenReturn(Optional.of(session));
+
+        assertThrows(InvalidOperationException.class, () ->
+                sessionService.rejectSession(teacher.getEmail(), sessionId)
+        );
+    }
+
+    @Test
+    void completeSession_success() {
+        UUID sessionId = UUID.randomUUID();
+        Session session = new Session();
+        session.setId(sessionId);
+        session.setTeacher(teacher);
+        session.setStudent(student);
+        session.setStatus(SessionStatus.ACCEPTED);
+
+        when(sessionRepository.findById(sessionId)).thenReturn(Optional.of(session));
+        when(sessionRepository.save(any(Session.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(sessionRepository.countCompletedByUserId(teacherId)).thenReturn(5);
+        when(sessionRepository.countCompletedByUserId(studentId)).thenReturn(3);
+
+        SessionResponse response = sessionService.completeSession(teacher.getEmail(), sessionId);
+
+        assertNotNull(response);
+        assertEquals(SessionStatus.COMPLETED, response.status());
+        verify(userRepository, times(1)).save(teacher);
+        verify(userRepository, times(1)).save(student);
+        assertEquals(5, teacher.getTotalSessions());
+        assertEquals(3, student.getTotalSessions());
+    }
+
+    @Test
+    void completeSession_fail_sessionNotFound() {
+        UUID sessionId = UUID.randomUUID();
+        when(sessionRepository.findById(sessionId)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () ->
+                sessionService.completeSession(teacher.getEmail(), sessionId)
+        );
+    }
+
+    @Test
+    void completeSession_fail_wrongUser() {
+        UUID sessionId = UUID.randomUUID();
+        Session session = new Session();
+        session.setId(sessionId);
+        session.setTeacher(teacher);
+        session.setStudent(student);
+        session.setStatus(SessionStatus.ACCEPTED);
+
+        when(sessionRepository.findById(sessionId)).thenReturn(Optional.of(session));
+
+        assertThrows(InvalidOperationException.class, () ->
+                sessionService.completeSession("external@test.com", sessionId)
+        );
+    }
+
+    @Test
+    void completeSession_fail_invalidStatus() {
+        UUID sessionId = UUID.randomUUID();
+        Session session = new Session();
+        session.setId(sessionId);
+        session.setTeacher(teacher);
+        session.setStudent(student);
+        session.setStatus(SessionStatus.PENDING); // not accepted
+
+        when(sessionRepository.findById(sessionId)).thenReturn(Optional.of(session));
+
+        assertThrows(InvalidOperationException.class, () ->
+                sessionService.completeSession(teacher.getEmail(), sessionId)
+        );
+    }
+
+    @Test
+    void cancelSession_success() {
+        UUID sessionId = UUID.randomUUID();
+        Session session = new Session();
+        session.setId(sessionId);
+        session.setTeacher(teacher);
+        session.setStudent(student);
+        session.setStatus(SessionStatus.ACCEPTED);
+
+        when(sessionRepository.findById(sessionId)).thenReturn(Optional.of(session));
+        when(sessionRepository.save(any(Session.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        SessionResponse response = sessionService.cancelSession(student.getEmail(), sessionId, "Sick");
+
+        assertNotNull(response);
+        assertEquals(SessionStatus.CANCELLED, response.status());
+        assertEquals("Sick", response.cancelReason());
+    }
+
+    @Test
+    void cancelSession_fail_sessionNotFound() {
+        UUID sessionId = UUID.randomUUID();
+        when(sessionRepository.findById(sessionId)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () ->
+                sessionService.cancelSession(student.getEmail(), sessionId, "Reason")
+        );
+    }
+
+    @Test
+    void cancelSession_fail_wrongUser() {
+        UUID sessionId = UUID.randomUUID();
+        Session session = new Session();
+        session.setId(sessionId);
+        session.setTeacher(teacher);
+        session.setStudent(student);
+        session.setStatus(SessionStatus.ACCEPTED);
+
+        when(sessionRepository.findById(sessionId)).thenReturn(Optional.of(session));
+
+        assertThrows(InvalidOperationException.class, () ->
+                sessionService.cancelSession("other@test.com", sessionId, "Reason")
+        );
+    }
+
+    @Test
+    void cancelSession_fail_invalidStatus() {
+        UUID sessionId = UUID.randomUUID();
+        Session session = new Session();
+        session.setId(sessionId);
+        session.setTeacher(teacher);
+        session.setStudent(student);
+        session.setStatus(SessionStatus.COMPLETED);
+
+        when(sessionRepository.findById(sessionId)).thenReturn(Optional.of(session));
+
+        assertThrows(InvalidOperationException.class, () ->
+                sessionService.cancelSession(student.getEmail(), sessionId, "Reason")
+        );
+    }
+
+    @Test
+    void getMySessions_success_withStatus() {
+        when(userRepository.findByEmail(student.getEmail())).thenReturn(Optional.of(student));
+        Session s = new Session();
+        s.setId(UUID.randomUUID());
+        s.setTeacher(teacher);
+        s.setStudent(student);
+        s.setStatus(SessionStatus.COMPLETED);
+        when(sessionRepository.findByUserIdAndStatus(studentId, SessionStatus.COMPLETED)).thenReturn(List.of(s));
+
+        List<SessionResponse> results = sessionService.getMySessions(student.getEmail(), SessionStatus.COMPLETED);
+
+        assertNotNull(results);
+        assertEquals(1, results.size());
+        assertEquals(SessionStatus.COMPLETED, results.get(0).status());
+    }
+
+    @Test
+    void getMySessions_success_all() {
+        when(userRepository.findByEmail(student.getEmail())).thenReturn(Optional.of(student));
+        Session s = new Session();
+        s.setId(UUID.randomUUID());
+        s.setTeacher(teacher);
+        s.setStudent(student);
+        s.setStatus(SessionStatus.PENDING);
+        when(sessionRepository.findByUserId(studentId)).thenReturn(List.of(s));
+
+        List<SessionResponse> results = sessionService.getMySessions(student.getEmail(), null);
+
+        assertNotNull(results);
+        assertEquals(1, results.size());
+        assertEquals(SessionStatus.PENDING, results.get(0).status());
+    }
+
+    @Test
+    void getMySessions_fail_userNotFound() {
+        when(userRepository.findByEmail("unknown@test.com")).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () ->
+                sessionService.getMySessions("unknown@test.com", null)
+        );
+    }
+
+    @Test
+    void getSession_success() {
+        UUID sessionId = UUID.randomUUID();
+        Session session = new Session();
+        session.setId(sessionId);
+        session.setTeacher(teacher);
+        session.setStudent(student);
+        session.setStatus(SessionStatus.PENDING);
+
+        when(sessionRepository.findById(sessionId)).thenReturn(Optional.of(session));
+
+        SessionResponse response = sessionService.getSession(sessionId);
+
+        assertNotNull(response);
+        assertEquals(sessionId, response.id());
+    }
+
+    @Test
+    void getSession_notFound() {
+        UUID sessionId = UUID.randomUUID();
+        when(sessionRepository.findById(sessionId)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () ->
+                sessionService.getSession(sessionId)
+        );
+    }
 }

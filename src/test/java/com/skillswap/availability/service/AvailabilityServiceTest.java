@@ -114,4 +114,138 @@ class AvailabilityServiceTest {
                 availabilityService.add(user.getEmail(), request)
         );
     }
+
+    @Test
+    void addAvailability_userNotFound() {
+        AvailabilityRequest request = new AvailabilityRequest(1, LocalTime.of(9, 0), LocalTime.of(12, 0), "UTC");
+        when(userRepository.findByEmail("unknown@test.com")).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () ->
+                availabilityService.add("unknown@test.com", request)
+        );
+    }
+
+    @Test
+    void addAvailability_fail_equalTimes() {
+        AvailabilityRequest request = new AvailabilityRequest(1, LocalTime.of(9, 0), LocalTime.of(9, 0), "UTC");
+        when(userRepository.findByEmail(user.getEmail())).thenReturn(Optional.of(user));
+
+        assertThrows(IllegalArgumentException.class, () ->
+                availabilityService.add(user.getEmail(), request)
+        );
+    }
+
+    @Test
+    void delete_success() {
+        UUID availabilityId = UUID.randomUUID();
+        Availability availability = new Availability();
+        availability.setId(availabilityId);
+        availability.setUser(user);
+
+        when(userRepository.findByEmail(user.getEmail())).thenReturn(Optional.of(user));
+        when(availabilityRepository.findById(availabilityId)).thenReturn(Optional.of(availability));
+        doNothing().when(availabilityRepository).delete(availability);
+
+        availabilityService.delete(user.getEmail(), availabilityId);
+
+        verify(availabilityRepository, times(1)).delete(availability);
+    }
+
+    @Test
+    void delete_userNotFound() {
+        UUID availabilityId = UUID.randomUUID();
+        when(userRepository.findByEmail("unknown@test.com")).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () ->
+                availabilityService.delete("unknown@test.com", availabilityId)
+        );
+    }
+
+    @Test
+    void delete_availabilityNotFound() {
+        UUID availabilityId = UUID.randomUUID();
+        when(userRepository.findByEmail(user.getEmail())).thenReturn(Optional.of(user));
+        when(availabilityRepository.findById(availabilityId)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () ->
+                availabilityService.delete(user.getEmail(), availabilityId)
+        );
+    }
+
+    @Test
+    void delete_fail_wrongUser() {
+        UUID availabilityId = UUID.randomUUID();
+        User otherUser = new User();
+        otherUser.setId(UUID.randomUUID());
+        otherUser.setEmail("other@test.com");
+
+        Availability availability = new Availability();
+        availability.setId(availabilityId);
+        availability.setUser(otherUser);
+
+        when(userRepository.findByEmail(user.getEmail())).thenReturn(Optional.of(user));
+        when(availabilityRepository.findById(availabilityId)).thenReturn(Optional.of(availability));
+
+        assertThrows(IllegalArgumentException.class, () ->
+                availabilityService.delete(user.getEmail(), availabilityId)
+        );
+    }
+
+    @Test
+    void getMyAvailabilities_success() {
+        when(userRepository.findByEmail(user.getEmail())).thenReturn(Optional.of(user));
+        Availability a = new Availability();
+        a.setId(UUID.randomUUID());
+        a.setUser(user);
+        a.setDayOfWeek(1);
+        a.setStartTime(LocalTime.of(9, 0));
+        a.setEndTime(LocalTime.of(10, 0));
+        a.setTimezone("UTC");
+
+        when(availabilityRepository.findByUserId(userId)).thenReturn(List.of(a));
+
+        List<AvailabilityResponse> results = availabilityService.getMyAvailabilities(user.getEmail());
+
+        assertNotNull(results);
+        assertEquals(1, results.size());
+        assertEquals(1, results.get(0).dayOfWeek());
+    }
+
+    @Test
+    void getMyAvailabilities_fail_userNotFound() {
+        when(userRepository.findByEmail("unknown@test.com")).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () ->
+                availabilityService.getMyAvailabilities("unknown@test.com")
+        );
+    }
+
+    @Test
+    void getUserAvailabilities_success() {
+        when(userRepository.existsById(userId)).thenReturn(true);
+        Availability a = new Availability();
+        a.setId(UUID.randomUUID());
+        a.setUser(user);
+        a.setDayOfWeek(2);
+        a.setStartTime(LocalTime.of(14, 0));
+        a.setEndTime(LocalTime.of(15, 0));
+        a.setTimezone("UTC");
+
+        when(availabilityRepository.findByUserId(userId)).thenReturn(List.of(a));
+
+        List<AvailabilityResponse> results = availabilityService.getUserAvailabilities(userId);
+
+        assertNotNull(results);
+        assertEquals(1, results.size());
+        assertEquals(2, results.get(0).dayOfWeek());
+    }
+
+    @Test
+    void getUserAvailabilities_fail_userNotFound() {
+        when(userRepository.existsById(userId)).thenReturn(false);
+
+        assertThrows(ResourceNotFoundException.class, () ->
+                availabilityService.getUserAvailabilities(userId)
+        );
+    }
 }

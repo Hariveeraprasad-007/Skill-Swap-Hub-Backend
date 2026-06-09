@@ -93,4 +93,104 @@ class ReportServiceTest {
                 reportService.submitReport(reporter.getEmail(), request)
         );
     }
+
+    @Test
+    void submitReport_fail_reporterNotFound() {
+        ReportRequest request = new ReportRequest(reportedId, "SPAM", "User is spamming chat");
+        when(userRepository.findByEmail("unknown@test.com")).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () ->
+                reportService.submitReport("unknown@test.com", request)
+        );
+    }
+
+    @Test
+    void submitReport_fail_reportedNotFound() {
+        ReportRequest request = new ReportRequest(reportedId, "SPAM", "User is spamming chat");
+        when(userRepository.findByEmail(reporter.getEmail())).thenReturn(Optional.of(reporter));
+        when(userRepository.findById(reportedId)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () ->
+                reportService.submitReport(reporter.getEmail(), request)
+        );
+    }
+
+    @Test
+    void getMyReports_success() {
+        when(userRepository.findByEmail(reporter.getEmail())).thenReturn(Optional.of(reporter));
+        Report r = new Report();
+        r.setId(UUID.randomUUID());
+        r.setReporter(reporter);
+        r.setReportedUser(reported);
+        r.setReason("SPAM");
+        r.setDescription("Description");
+        r.setStatus(ReportStatus.PENDING);
+
+        when(reportRepository.findByReporterId(reporterId)).thenReturn(java.util.List.of(r));
+
+        java.util.List<ReportResponse> results = reportService.getMyReports(reporter.getEmail());
+
+        assertNotNull(results);
+        assertEquals(1, results.size());
+        assertEquals("SPAM", results.get(0).reason());
+    }
+
+    @Test
+    void getMyReports_fail_userNotFound() {
+        when(userRepository.findByEmail("unknown@test.com")).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () ->
+                reportService.getMyReports("unknown@test.com")
+        );
+    }
+
+    @Test
+    void getAllReports_success() {
+        Report r = new Report();
+        r.setId(UUID.randomUUID());
+        r.setReporter(reporter);
+        r.setReportedUser(reported);
+        r.setReason("INAPPROPRIATE");
+        r.setDescription("Description");
+        r.setStatus(ReportStatus.REVIEWED);
+
+        when(reportRepository.findAll()).thenReturn(java.util.List.of(r));
+
+        java.util.List<ReportResponse> results = reportService.getAllReports();
+
+        assertNotNull(results);
+        assertEquals(1, results.size());
+        assertEquals("INAPPROPRIATE", results.get(0).reason());
+        assertEquals(ReportStatus.REVIEWED, results.get(0).status());
+    }
+
+    @Test
+    void updateReportStatus_success() {
+        UUID reportId = UUID.randomUUID();
+        Report r = new Report();
+        r.setId(reportId);
+        r.setReporter(reporter);
+        r.setReportedUser(reported);
+        r.setReason("SPAM");
+        r.setDescription("Description");
+        r.setStatus(ReportStatus.PENDING);
+
+        when(reportRepository.findById(reportId)).thenReturn(Optional.of(r));
+        when(reportRepository.save(any(Report.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        ReportResponse response = reportService.updateReportStatus(reportId, ReportStatus.REVIEWED);
+
+        assertNotNull(response);
+        assertEquals(ReportStatus.REVIEWED, response.status());
+    }
+
+    @Test
+    void updateReportStatus_fail_notFound() {
+        UUID reportId = UUID.randomUUID();
+        when(reportRepository.findById(reportId)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () ->
+                reportService.updateReportStatus(reportId, ReportStatus.REVIEWED)
+        );
+    }
 }

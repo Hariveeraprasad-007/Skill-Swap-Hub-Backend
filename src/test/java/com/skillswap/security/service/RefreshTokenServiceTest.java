@@ -93,4 +93,32 @@ class RefreshTokenServiceTest {
         );
         verify(refreshTokenRepository, times(1)).delete(token);
     }
+
+    @Test
+    void createRefreshToken_fail_userNotFound() {
+        UUID randomId = UUID.randomUUID();
+        when(userRepository.findById(randomId)).thenReturn(Optional.empty());
+
+        assertThrows(IllegalArgumentException.class, () ->
+                refreshTokenService.createRefreshToken(randomId)
+        );
+    }
+
+    @Test
+    void verifyRefreshToken_fail_notFound() {
+        when(refreshTokenRepository.findByToken("invalid-token")).thenReturn(Optional.empty());
+
+        assertThrows(IllegalArgumentException.class, () ->
+                refreshTokenService.verifyRefreshToken("invalid-token")
+        );
+    }
+
+    @Test
+    void deleteByUserId_success() {
+        doNothing().when(refreshTokenRepository).deleteByUserId(userId);
+
+        refreshTokenService.deleteByUserId(userId);
+
+        verify(refreshTokenRepository, times(1)).deleteByUserId(userId);
+    }
 }

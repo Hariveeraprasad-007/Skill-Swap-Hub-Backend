@@ -141,4 +141,63 @@ class FeedbackServiceTest {
                 feedbackService.submitFeedback(reviewer.getEmail(), request)
         );
     }
+
+    @Test
+    void submitFeedback_fail_reviewerNotFound() {
+        FeedbackRequest request = new FeedbackRequest(sessionId, 5, "Great!");
+        when(userRepository.findByEmail("unknown@test.com")).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () ->
+                feedbackService.submitFeedback("unknown@test.com", request)
+        );
+    }
+
+    @Test
+    void submitFeedback_fail_sessionNotFound() {
+        FeedbackRequest request = new FeedbackRequest(sessionId, 5, "Great!");
+        when(userRepository.findByEmail(reviewer.getEmail())).thenReturn(Optional.of(reviewer));
+        when(sessionRepository.findById(sessionId)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () ->
+                feedbackService.submitFeedback(reviewer.getEmail(), request)
+        );
+    }
+
+    @Test
+    void getUserReviews_success() {
+        Feedback f = new Feedback();
+        f.setId(UUID.randomUUID());
+        f.setSession(session);
+        f.setReviewer(reviewer);
+        f.setReviewee(reviewee);
+        f.setRating(4);
+        f.setComment("Good job");
+
+        when(feedbackRepository.findByRevieweeId(revieweeId)).thenReturn(java.util.List.of(f));
+
+        java.util.List<FeedbackResponse> results = feedbackService.getUserReviews(revieweeId);
+
+        assertNotNull(results);
+        assertEquals(1, results.size());
+        assertEquals("Good job", results.get(0).comment());
+    }
+
+    @Test
+    void getSessionFeedback_success() {
+        Feedback f = new Feedback();
+        f.setId(UUID.randomUUID());
+        f.setSession(session);
+        f.setReviewer(reviewer);
+        f.setReviewee(reviewee);
+        f.setRating(5);
+        f.setComment("Amazing!");
+
+        when(feedbackRepository.findBySessionId(sessionId)).thenReturn(java.util.List.of(f));
+
+        java.util.List<FeedbackResponse> results = feedbackService.getSessionFeedback(sessionId);
+
+        assertNotNull(results);
+        assertEquals(1, results.size());
+        assertEquals(5, results.get(0).rating());
+    }
 }
