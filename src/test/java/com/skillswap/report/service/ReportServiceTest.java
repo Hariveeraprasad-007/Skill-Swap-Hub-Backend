@@ -1,0 +1,96 @@
+package com.skillswap.report.service;
+
+import com.skillswap.common.exception.ResourceNotFoundException;
+import com.skillswap.report.dto.ReportRequest;
+import com.skillswap.report.dto.ReportResponse;
+import com.skillswap.report.entity.Report;
+import com.skillswap.report.enums.ReportStatus;
+import com.skillswap.report.repository.ReportRepository;
+import com.skillswap.user.entity.User;
+import com.skillswap.user.repository.UserRepository;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.util.Optional;
+import java.util.UUID;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
+@ExtendWith(MockitoExtension.class)
+class ReportServiceTest {
+
+    @Mock
+    private ReportRepository reportRepository;
+
+    @Mock
+    private UserRepository userRepository;
+
+    @InjectMocks
+    private ReportService reportService;
+
+    private User reporter;
+    private User reported;
+    private UUID reporterId;
+    private UUID reportedId;
+
+    @BeforeEach
+    void setUp() {
+        reporterId = UUID.randomUUID();
+        reportedId = UUID.randomUUID();
+
+        reporter = new User();
+        reporter.setId(reporterId);
+        reporter.setEmail("reporter@test.com");
+        reporter.setFirstName("John");
+        reporter.setLastName("Reporter");
+
+        reported = new User();
+        reported.setId(reportedId);
+        reported.setEmail("reported@test.com");
+        reported.setFirstName("Spam");
+        reported.setLastName("User");
+    }
+
+    @Test
+    void submitReport_success() {
+        ReportRequest request = new ReportRequest(reportedId, "SPAM", "User is spamming chat");
+
+        when(userRepository.findByEmail(reporter.getEmail())).thenReturn(Optional.of(reporter));
+        when(userRepository.findById(reportedId)).thenReturn(Optional.of(reported));
+
+        Report savedReport = new Report();
+        savedReport.setId(UUID.randomUUID());
+        savedReport.setReporter(reporter);
+        savedReport.setReportedUser(reported);
+        savedReport.setReason("SPAM");
+        savedReport.setDescription("User is spamming chat");
+        savedReport.setStatus(ReportStatus.PENDING);
+
+        when(reportRepository.save(any(Report.class))).thenReturn(savedReport);
+
+        ReportResponse response = reportService.submitReport(reporter.getEmail(), request);
+
+        assertNotNull(response);
+        assertEquals("SPAM", response.reason());
+        assertEquals(ReportStatus.PENDING, response.status());
+        verify(reportRepository, times(1)).save(any(Report.class));
+    }
+
+    @Test
+    void submitReport_fail_selfReport() {
+        ReportRequest request = new ReportRequest(reporterId, "SPAM", "Reporting myself");
+
+        when(userRepository.findByEmail(reporter.getEmail())).thenReturn(Optional.of(reporter));
+        when(userRepository.findById(reporterId)).thenReturn(Optional.of(reporter));
+
+        assertThrows(IllegalArgumentException.class, () ->
+                reportService.submitReport(reporter.getEmail(), request)
+        );
+    }
+}
