@@ -56,6 +56,15 @@ cp .env.example .env
 ### 4. Access Swagger UI
 Open [http://localhost:8080/swagger-ui.html](http://localhost:8080/swagger-ui.html)
 
+## Testing
+
+The project includes a comprehensive unit test suite (**139 unit tests**) using JUnit 5 and Mockito to verify edge cases, business constraints, schedule conflicts, token expirations, and WebSocket notifications.
+
+To execute the test suite:
+```bash
+./mvnw clean test
+```
+
 ## API Modules
 
 | Module | Base Path | Endpoints |
